@@ -597,6 +597,8 @@ async def confirm_booking_handler(message: IncomingMessage, bot: Bot) -> None:
     )
 
 
+from pybotx import BubbleMarkup
+
 @collector.command("/view_bookings", description="Посмотреть бронирования")
 async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
@@ -709,41 +711,45 @@ async def show_calendar_grid(message: IncomingMessage, bot: Bot, target_date: da
         
         lines.append(row)
     
-    # Добавляем кнопки навигации
+    # Добавляем кнопки навигации с использованием BubbleMarkup
     prev_date = target_date - timedelta(days=1)
     next_date = target_date + timedelta(days=1)
     today = _now_local().date()
     
-    navigation_bubbles = []
+    # Создаем BubbleMarkup для кнопок
+    bubbles = BubbleMarkup()
     
     # Кнопка "Предыдущий день"
-    navigation_bubbles.append({
-        "label": "◀️ Пред. день",
-        "command": f"/view_date {prev_date.isoformat()}"
-    })
+    bubbles.add_button(
+        command=f"/view_date {prev_date.isoformat()}",
+        label="◀️ Пред. день"
+    )
     
     # Кнопка "Сегодня"
     if target_date != today:
-        navigation_bubbles.append({
-            "label": "Сегодня",
-            "command": f"/view_date {today.isoformat()}"
-        })
+        bubbles.add_button(
+            command=f"/view_date {today.isoformat()}",
+            label="Сегодня",
+            new_row=False
+        )
     
     # Кнопка "Следующий день"
-    navigation_bubbles.append({
-        "label": "След. день ▶️",
-        "command": f"/view_date {next_date.isoformat()}"
-    })
+    bubbles.add_button(
+        command=f"/view_date {next_date.isoformat()}",
+        label="След. день ▶️",
+        new_row=False
+    )
     
     # Кнопка "Главное меню"
-    navigation_bubbles.append({
-        "label": "🏠 Главное меню",
-        "command": "/main_menu"
-    })
+    bubbles.add_button(
+        command="/main_menu",
+        label="🏠 Главное меню"
+    )
     
+    # Отправляем сообщение
     await bot.answer_message(
         "\n".join(lines),
-        bubbles=navigation_bubbles
+        bubbles=bubbles
     )
 
 
