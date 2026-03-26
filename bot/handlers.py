@@ -620,128 +620,14 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         return
     
     # Создаем структуру данных для календаря: {дата: {комната: [события]}}
-    calendar_data = {date: {room_name: [] for room_name in room_names} for date in dates}
+    calendar_data = {target_date: {room_name: [] for room_name in room_names} for target_date in dates}
     
     for target_date, room_events in zip(dates, per_day_events, strict=True):
         for room, entries in room_events:
             room_name = room["name"]
             calendar_data[target_date][room_name] = entries
     
-    # Формируем таблицу
-    lines = ["📅 Расписание бронирований на неделю:\n"]
-    
-    # Заголовок таблицы
-    header_parts = ["Дата"]
-    for room_name in room_names:
-        # Обрезаем длинные названия
-        short_name = room_name[:12] + ".." if len(room_name) > 14 else room_name
-        header_parts.append(short_name)
-    
-    # Вычисляем ширину колонок
-    col_widths = [10]  # ширина колонки с датой
-    for room_name in room_names:
-        col_widths.append(max(14, len(room_name[:14])))
-    
-    # Формируем строку заголовка
-    header = "|".join(part.ljust(width) for part, width in zip(header_parts, col_widths))
-    lines.append(header)
-    lines.append("-" * len(header))
-    
-    # Заполняем таблицу данными по дням
-    for target_date in dates:
-        date_str = target_date.strftime("%d.%m.%Y")
-        # Определяем день недели
-        weekday_names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
-        weekday = weekday_names[target_date.weekday()]
-        date_display = f"{date_str} ({weekday})"
-        
-        row_parts = [date_display]
-        
-        for room_name in room_names:
-            entries = calendar_data[target_date][room_name]
-            if not entries:
-                row_parts.append("свободно")
-            else:
-                # Формируем строку с событиями
-                event_lines = []
-                for entry in entries:
-                    event_time = _format_entry_time(entry, target_date)
-                    event_title = _display_event_title(entry)
-                    if event_time == "весь день":
-                        event_lines.append(f"📌 {event_title}")
-                    else:
-                        event_lines.append(f"🕐 {event_time}\n   {event_title}")
-                
-                # Если несколько событий, объединяем их
-                if len(event_lines) == 1:
-                    event_display = event_lines[0]
-                else:
-                    event_display = f"{len(event_lines)} события:\n" + "\n".join(event_lines)
-                
-                row_parts.append(event_display)
-        
-        # Формируем строку таблицы
-        for i, (part, width) in enumerate(zip(row_parts, col_widths)):
-            # Для многострочных ячеек нужно особое форматирование
-            if "\n" in part:
-                lines.append(f"{part}")
-                if i < len(row_parts) - 1:
-                    lines.append(" " * sum(col_widths[:i+1]) + "|" + " " * (col_widths[i+1] - 1))
-            else:
-                if i == 0:
-                    lines.append(part.ljust(width) + "|" + " " * (col_widths[1] - 1))
-                else:
-                    # Добавляем разделитель после первой колонки
-                    pass
-        
-        # Альтернативный вариант: выводим каждый день отдельно с таблицей
-        # Переделаем более простой и читаемый вариант
-    
-    # Более простой и читаемый вариант - отдельный блок для каждого дня
-    lines = ["📅 Расписание бронирований на неделю:\n"]
-    
-    for target_date in dates:
-        date_str = target_date.strftime("%d.%m.%Y")
-        weekday_names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
-        weekday = weekday_names[target_date.weekday()]
-        
-        lines.append(f"\n━━━ {date_str} ({weekday}) ━━━")
-        
-        # Создаем таблицу для текущего дня
-        # Заголовок таблицы
-        header_parts = ["Переговорная", "Бронирования"]
-        col_widths = [max(len(room_name), 20) for room_name in room_names]
-        col_widths.append(40)  # ширина для колонки с бронированиями
-        
-        # Формируем строку заголовка
-        header = f"{'Переговорная':<{max(20, max(col_widths))}} | {'Бронирования':<40}"
-        lines.append(header)
-        lines.append("-" * len(header))
-        
-        for room_name in room_names:
-            entries = calendar_data[target_date][room_name]
-            
-            if not entries:
-                lines.append(f"{room_name:<{max(20, max(col_widths))}} | {'свободно':<40}")
-            else:
-                # Первая строка с названием комнаты
-                first_event = entries[0]
-                event_time = _format_entry_time(first_event, target_date)
-                event_title = _display_event_title(first_event)
-                
-                if len(entries) == 1:
-                    lines.append(f"{room_name:<{max(20, max(col_widths))}} | {event_time} - {event_title}")
-                else:
-                    lines.append(f"{room_name:<{max(20, max(col_widths))}} | {event_time} - {event_title}")
-                    # Остальные события
-                    for entry in entries[1:]:
-                        event_time = _format_entry_time(entry, target_date)
-                        event_title = _display_event_title(entry)
-                        lines.append(f"{'':<{max(20, max(col_widths))}} | {event_time} - {event_title}")
-        
-        lines.append("")  # Пустая строка между днями
-    
-    # Если нет бронирований за всю неделю
+    # Проверяем, есть ли вообще бронирования
     has_bookings = any(
         any(entries for entries in day_data.values())
         for day_data in calendar_data.values()
@@ -754,13 +640,63 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         )
         return
     
-    # Разбиваем сообщение на части, если оно слишком длинное
+    # Формируем вывод
+    lines = ["📅 Расписание бронирований на неделю:\n"]
+    
+    # Определяем максимальную ширину колонки с названием комнаты
+    max_room_width = max(len(room_name) for room_name in room_names) + 2
+    room_width = max(max_room_width, 20)  # минимум 20 символов
+    
+    for target_date in dates:
+        date_str = target_date.strftime("%d.%m.%Y")
+        weekday_names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+        weekday = weekday_names[target_date.weekday()]
+        
+        lines.append(f"\n━━━ {date_str} ({weekday}) ━━━")
+        
+        # Заголовок таблицы
+        header = f"{'Переговорная':<{room_width}} | Бронирования"
+        lines.append(header)
+        lines.append("-" * len(header))
+        
+        # Выводим данные для каждой комнаты
+        for room_name in room_names:
+            entries = calendar_data[target_date][room_name]
+            
+            if not entries:
+                # Свободная комната
+                lines.append(f"{room_name:<{room_width}} | свободно")
+            else:
+                # Первое бронирование
+                first_entry = entries[0]
+                event_time = _format_entry_time(first_entry, target_date)
+                event_title = _display_event_title(first_entry)
+                lines.append(f"{room_name:<{room_width}} | {event_time} - {event_title}")
+                
+                # Остальные бронирования (если есть)
+                for entry in entries[1:]:
+                    event_time = _format_entry_time(entry, target_date)
+                    event_title = _display_event_title(entry)
+                    # Добавляем отступ для дополнительных строк
+                    lines.append(f"{'':<{room_width}} | {event_time} - {event_title}")
+        
+        lines.append("")  # Пустая строка между днями
+    
+    # Отправляем сообщение
     message_text = "\n".join(lines)
-    if len(message_text) > 4000:  # Ограничение телеграм/боткс
-        # Отправляем по частям
+    
+    # Разбиваем на части, если сообщение слишком длинное
+    if len(message_text) > 4000:
         for i in range(0, len(message_text), 3800):
+            chunk = message_text[i:i+3800]
+            # Добавляем навигацию между частями
+            if i > 0:
+                chunk = f"(продолжение)\n{chunk}"
+            if i + 3800 < len(message_text):
+                chunk = f"{chunk}\n(продолжение следует...)"
+            
             await bot.answer_message(
-                message_text[i:i+3800],
+                chunk,
                 bubbles=get_back_to_menu_bubbles() if i == 0 else None,
             )
     else:
