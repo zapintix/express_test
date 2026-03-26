@@ -611,7 +611,7 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
 
 
 async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, month: int) -> None:
-    """Показывает календарь месяца в виде сетки кнопок"""
+    """Показывает календарь месяца в виде сетки кнопок 7x6"""
     
     # Получаем календарь на месяц
     month_calendar = monthcalendar(year, month)
@@ -629,9 +629,8 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
     # Создаем кнопки
     bubbles = BubbleMarkup()
     
-    # Первая строка - дни недели (некликабельные кнопки)
+    # Первая строка - дни недели (заголовки)
     for i, weekday in enumerate(weekdays):
-        # Создаем неактивные кнопки (без команды)
         bubbles.add_button(
             command="",
             label=weekday,
@@ -642,7 +641,7 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
     for week in month_calendar:
         for day in week:
             if day == 0:
-                # Пустая ячейка - добавляем невидимую кнопку с пробелом
+                # Пустая ячейка - кнопка с пробелом
                 bubbles.add_button(
                     command="",
                     label=" ",
@@ -657,7 +656,7 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
                     new_row=False
                 )
         # После каждой недели принудительно начинаем новую строку
-        # Добавляем невидимую кнопку-разделитель
+        # Добавляем невидимую кнопку-разделитель для переноса строки
         bubbles.add_button(
             command="",
             label="",
@@ -791,8 +790,6 @@ async def show_day_schedule(message: IncomingMessage, bot: Bot, target_date: dat
     
     lines = [f"📅 Расписание на {date_str} ({weekday})\n"]
     
-    has_any_bookings = False
-    
     for room_name in room_names:
         lines.append(f"\n🏢 {room_name}:")
         
@@ -806,7 +803,6 @@ async def show_day_schedule(message: IncomingMessage, bot: Bot, target_date: dat
         if not room_events_for_day:
             lines.append("   ✅ свободно")
         else:
-            has_any_bookings = True
             for entry in room_events_for_day:
                 event_time = _format_entry_time(entry, target_date)
                 event_title = _display_event_title(entry)
