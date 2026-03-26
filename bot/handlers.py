@@ -601,11 +601,11 @@ async def confirm_booking_handler(message: IncomingMessage, bot: Bot) -> None:
 async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
     today = _now_local().date()
-    dates = [today + timedelta(days=offset) for offset in range(7)]
+    dates = [today + timedelta(days=i) for i in range(7)]
 
     try:
         per_day_events = await asyncio.gather(
-            *[_gather_room_events_for_date(target_date) for target_date in dates]
+            *[_gather_room_events_for_date(d) for d in dates]
         )
     except CommuniGateError:
         logger.exception("Failed to load daily room bookings from CommuniGate")
@@ -615,15 +615,13 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         )
         return
 
-    # Собираем все бронирования
+    # собираем все события в один список
     flattened = [
-        (target_date, entry)
-        for target_date, room_events in zip(dates, per_day_events, strict=True)
+        (d, entry)
+        for d, room_events in zip(dates, per_day_events, strict=True)
         for _, entries in room_events
         for entry in entries
     ]
-    flattened.sort(key=lambda item: (item[1].start, item[1].room_name, item[1].uid))
-
     if not flattened:
         await bot.answer_message(
             "В ближайшие 7 дней бронирований нет.",
@@ -632,52 +630,46 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         return
 
     from collections import defaultdict
-    import itertools
 
     # уникальные комнаты
     rooms = sorted({entry.room_name for _, entry in flattened})
 
-    # собираем матрицу time × room для каждой даты
+    # проходим по каждой дате отдельно
     for target_date in sorted({d for d, _ in flattened}):
-        # собираем события для даты
         day_entries = [entry for d, entry in flattened if d == target_date]
 
-        # собираем уникальные слоты времени
-        time_slots = sorted({e.start.strftime("%H:%M") for e in day_entries})
+        # уникальные слоты времени
+        time_slots = sorted({entry.start.strftime("%H:%M") for entry in day_entries})
         if not time_slots:
             continue
 
-        # строим словарь: slot × room → список пользователей
+        # создаём матрицу slot × room → текст
         matrix = defaultdict(lambda: defaultdict(str))
         for entry in day_entries:
-            start_str = entry.start.strftime("%H:%M")
-            matrix[start_str][entry.room_name] = _display_event_title(entry)
+            slot = entry.start.strftime("%H:%M")
+            matrix[slot][entry.room_name] = _display_event_title(entry)
 
-        # строим bubbles для BotX
+        # формируем bubbles для BotX
         bubbles = []
 
         # заголовок с комнатами
-        header_text = " | ".join(rooms)
-        bubbles.append({"text": f"{target_date.strftime('%d.%m.%Y')}\n{header_text}"})
+        header_row = ["Время"] + rooms
+        bubbles.append({"text": " | ".join(header_row)})
 
+        # строки с кнопками
         for slot in time_slots:
             row_buttons = []
-            row_text_parts = [slot]
+            row_text = [slot]  # первая колонка — время
             for room in rooms:
-                cell_text = matrix[slot].get(room, "")
-                if not cell_text:
-                    cell_text = " "  # пустая ячейка
-                row_text_parts.append(cell_text)
-                # кнопка просто для отображения
+                cell_text = matrix[slot].get(room, " ")  # пустая ячейка
+                row_text.append(cell_text)
+                # кнопка просто отображает текст, команды нет
                 row_buttons.append({"text": cell_text, "command": None})
-            bubbles.append({
-                "text": " | ".join(row_text_parts),
-                "buttons": row_buttons,
-            })
+            bubbles.append({"text": " | ".join(row_text), "buttons": row_buttons})
 
         await bot.answer_message(
             f"Бронирования на {target_date.strftime('%d.%m.%Y')}:",
-            bubbles=bubbles
+            bubbles=bubbles,
         )
 
 @collector.command("/my_bookings", description="Мои бронирования")
