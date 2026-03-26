@@ -630,18 +630,37 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         )
         return
 
-    lines = ["Ближайшие бронирования на 7 дней:\n"]
-    current_date: date | None = None
+    # --- Формируем матрицу ---
+    from collections import defaultdict
+
+    # уникальные комнаты
+    rooms = sorted({entry.room_name for _, entry in flattened})
+    # структура: calendar[date][room_name] = список событий
+    calendar = defaultdict(lambda: defaultdict(list))
     for target_date, entry in flattened:
-        if target_date != current_date:
-            current_date = target_date
-            lines.append(f"\n{target_date.strftime('%d.%m.%Y')}:")
-        lines.append(
-            f"• {entry.room_name} | {_format_entry_time(entry, target_date)} | {_display_event_title(entry)}"
-        )
+        calendar[target_date][entry.room_name].append(entry)
 
-    await bot.answer_message("\n".join(lines), bubbles=get_back_to_menu_bubbles())
+    # генерируем строки матрицы
+    lines = ["Ближайшие бронирования на 7 дней:\n"]
+    header = "Дата        | " + " | ".join(f"{room}" for room in rooms)
+    lines.append(header)
+    lines.append("-" * len(header))
 
+    for target_date in sorted(calendar.keys()):
+        row = [target_date.strftime("%d.%m.%Y")]
+        for room in rooms:
+            entries = calendar[target_date].get(room, [])
+            if entries:
+                cell = ", ".join(_display_event_title(e) for e in entries)
+            else:
+                cell = "свободно"
+            row.append(cell)
+        lines.append(" | ".join(row))
+
+    await bot.answer_message(
+        "\n".join(lines),
+        bubbles=get_back_to_menu_bubbles(),
+    )
 
 @collector.command("/my_bookings", description="Мои бронирования")
 async def my_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
