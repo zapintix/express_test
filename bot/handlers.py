@@ -601,11 +601,15 @@ async def confirm_booking_handler(message: IncomingMessage, bot: Bot) -> None:
 async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
     today = _now_local().date()
-    dates = [today + timedelta(days=i) for i in range(7)]
-
+    dates = [today + timedelta(days=offset) for offset in range(7)]
+    
+    # Получаем список всех комнат
+    rooms = get_rooms()
+    room_names = [room["name"] for room in rooms]
+    
     try:
         per_day_events = await asyncio.gather(
-            *[_gather_room_events_for_date(d) for d in dates]
+            *[_gather_room_events_for_date(target_date) for target_date in dates]
         )
     except CommuniGateError:
         logger.exception("Failed to load daily room bookings from CommuniGate")
@@ -614,70 +618,155 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
             bubbles=get_back_to_menu_bubbles(),
         )
         return
-
-    # Собираем все бронирования
-    flattened = [
-        (d, entry)
-        for d, room_events in zip(dates, per_day_events, strict=True)
-        for _, entries in room_events
-        for entry in entries
-    ]
-    flattened.sort(key=lambda item: (item[1].start, item[1].room_name, item[1].uid))
-
-    if not flattened:
+    
+    # Создаем структуру данных для календаря: {дата: {комната: [события]}}
+    calendar_data = {date: {room_name: [] for room_name in room_names} for date in dates}
+    
+    for target_date, room_events in zip(dates, per_day_events, strict=True):
+        for room, entries in room_events:
+            room_name = room["name"]
+            calendar_data[target_date][room_name] = entries
+    
+    # Формируем таблицу
+    lines = ["📅 Расписание бронирований на неделю:\n"]
+    
+    # Заголовок таблицы
+    header_parts = ["Дата"]
+    for room_name in room_names:
+        # Обрезаем длинные названия
+        short_name = room_name[:12] + ".." if len(room_name) > 14 else room_name
+        header_parts.append(short_name)
+    
+    # Вычисляем ширину колонок
+    col_widths = [10]  # ширина колонки с датой
+    for room_name in room_names:
+        col_widths.append(max(14, len(room_name[:14])))
+    
+    # Формируем строку заголовка
+    header = "|".join(part.ljust(width) for part, width in zip(header_parts, col_widths))
+    lines.append(header)
+    lines.append("-" * len(header))
+    
+    # Заполняем таблицу данными по дням
+    for target_date in dates:
+        date_str = target_date.strftime("%d.%m.%Y")
+        # Определяем день недели
+        weekday_names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+        weekday = weekday_names[target_date.weekday()]
+        date_display = f"{date_str} ({weekday})"
+        
+        row_parts = [date_display]
+        
+        for room_name in room_names:
+            entries = calendar_data[target_date][room_name]
+            if not entries:
+                row_parts.append("свободно")
+            else:
+                # Формируем строку с событиями
+                event_lines = []
+                for entry in entries:
+                    event_time = _format_entry_time(entry, target_date)
+                    event_title = _display_event_title(entry)
+                    if event_time == "весь день":
+                        event_lines.append(f"📌 {event_title}")
+                    else:
+                        event_lines.append(f"🕐 {event_time}\n   {event_title}")
+                
+                # Если несколько событий, объединяем их
+                if len(event_lines) == 1:
+                    event_display = event_lines[0]
+                else:
+                    event_display = f"{len(event_lines)} события:\n" + "\n".join(event_lines)
+                
+                row_parts.append(event_display)
+        
+        # Формируем строку таблицы
+        for i, (part, width) in enumerate(zip(row_parts, col_widths)):
+            # Для многострочных ячеек нужно особое форматирование
+            if "\n" in part:
+                lines.append(f"{part}")
+                if i < len(row_parts) - 1:
+                    lines.append(" " * sum(col_widths[:i+1]) + "|" + " " * (col_widths[i+1] - 1))
+            else:
+                if i == 0:
+                    lines.append(part.ljust(width) + "|" + " " * (col_widths[1] - 1))
+                else:
+                    # Добавляем разделитель после первой колонки
+                    pass
+        
+        # Альтернативный вариант: выводим каждый день отдельно с таблицей
+        # Переделаем более простой и читаемый вариант
+    
+    # Более простой и читаемый вариант - отдельный блок для каждого дня
+    lines = ["📅 Расписание бронирований на неделю:\n"]
+    
+    for target_date in dates:
+        date_str = target_date.strftime("%d.%m.%Y")
+        weekday_names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+        weekday = weekday_names[target_date.weekday()]
+        
+        lines.append(f"\n━━━ {date_str} ({weekday}) ━━━")
+        
+        # Создаем таблицу для текущего дня
+        # Заголовок таблицы
+        header_parts = ["Переговорная", "Бронирования"]
+        col_widths = [max(len(room_name), 20) for room_name in room_names]
+        col_widths.append(40)  # ширина для колонки с бронированиями
+        
+        # Формируем строку заголовка
+        header = f"{'Переговорная':<{max(20, max(col_widths))}} | {'Бронирования':<40}"
+        lines.append(header)
+        lines.append("-" * len(header))
+        
+        for room_name in room_names:
+            entries = calendar_data[target_date][room_name]
+            
+            if not entries:
+                lines.append(f"{room_name:<{max(20, max(col_widths))}} | {'свободно':<40}")
+            else:
+                # Первая строка с названием комнаты
+                first_event = entries[0]
+                event_time = _format_entry_time(first_event, target_date)
+                event_title = _display_event_title(first_event)
+                
+                if len(entries) == 1:
+                    lines.append(f"{room_name:<{max(20, max(col_widths))}} | {event_time} - {event_title}")
+                else:
+                    lines.append(f"{room_name:<{max(20, max(col_widths))}} | {event_time} - {event_title}")
+                    # Остальные события
+                    for entry in entries[1:]:
+                        event_time = _format_entry_time(entry, target_date)
+                        event_title = _display_event_title(entry)
+                        lines.append(f"{'':<{max(20, max(col_widths))}} | {event_time} - {event_title}")
+        
+        lines.append("")  # Пустая строка между днями
+    
+    # Если нет бронирований за всю неделю
+    has_bookings = any(
+        any(entries for entries in day_data.values())
+        for day_data in calendar_data.values()
+    )
+    
+    if not has_bookings:
         await bot.answer_message(
             "В ближайшие 7 дней бронирований нет.",
             bubbles=get_back_to_menu_bubbles(),
         )
         return
-
-    from collections import defaultdict
-
-    # уникальные комнаты
-    rooms = sorted({entry.room_name for _, entry in flattened})
-
-    # для каждой даты строим таблицу
-    for target_date in sorted({d for d, _ in flattened}):
-        # события для даты
-        day_entries = [entry for d, entry in flattened if d == target_date]
-        # уникальные слоты времени
-        time_slots = sorted({e.start.strftime("%H:%M") for e in day_entries})
-        if not time_slots:
-            continue
-
-        # словарь: slot × room → имя участника
-        matrix = defaultdict(lambda: defaultdict(str))
-        for entry in day_entries:
-            start_str = entry.start.strftime("%H:%M")
-            matrix[start_str][entry.room_name] = _display_event_title(entry)
-
-        # Формируем bubbles для BotX
-        bubbles = []
-
-        # Заголовок: комнаты
-        header_text = " | ".join(["Время"] + rooms)
-        bubbles.append({"text": f"{target_date.strftime('%d.%m.%Y')}\n{header_text}"})
-
-        # строки по времени
-        for slot in time_slots:
-            row_buttons = []
-            row_text_parts = [slot]
-            for room in rooms:
-                cell_text = matrix[slot].get(room, " ")
-                row_text_parts.append(cell_text)
-                # кнопка просто для отображения
-                row_buttons.append({"text": cell_text, "command": None})
-            bubbles.append({"text": " | ".join(row_text_parts), "buttons": row_buttons})
-
-        try:
+    
+    # Разбиваем сообщение на части, если оно слишком длинное
+    message_text = "\n".join(lines)
+    if len(message_text) > 4000:  # Ограничение телеграм/боткс
+        # Отправляем по частям
+        for i in range(0, len(message_text), 3800):
             await bot.answer_message(
-                f"Бронирования на {target_date.strftime('%d.%m.%Y')}:",
-                bubbles=bubbles,
+                message_text[i:i+3800],
+                bubbles=get_back_to_menu_bubbles() if i == 0 else None,
             )
-        except Exception as e:
-            logger.exception("Ошибка при отправке календаря бронирований: %s", e)
+    else:
+        await bot.answer_message(message_text, bubbles=get_back_to_menu_bubbles())
 
-            
+        
 @collector.command("/my_bookings", description="Мои бронирования")
 async def my_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
