@@ -601,7 +601,7 @@ async def confirm_booking_handler(message: IncomingMessage, bot: Bot) -> None:
 async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
     today = _now_local().date()
-    dates = [today + timedelta(days=offset) for offset in range(5)]
+    dates = [today + timedelta(days=offset) for offset in range(7)]
 
     try:
         per_day_events = await asyncio.gather(
@@ -625,12 +625,12 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
 
     if not flattened:
         await bot.answer_message(
-            "В ближайшие 5 дней бронирований нет.",
+            "В ближайшие 7 дней бронирований нет.",
             bubbles=get_back_to_menu_bubbles(),
         )
         return
 
-    lines = ["Ближайшие бронирования на 5 дней:\n"]
+    lines = ["Ближайшие бронирования на 7 дней:\n"]
     current_date: date | None = None
     for target_date, entry in flattened:
         if target_date != current_date:

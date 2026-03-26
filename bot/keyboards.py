@@ -55,7 +55,7 @@ def get_date_bubbles():
     day_names = {
         0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс",
     }
-    for i in range(5):
+    for i in range(7):
         d = today + timedelta(days=i)
         if i == 0:
             label = f"Сегодня ({d.strftime('%d.%m')})"
