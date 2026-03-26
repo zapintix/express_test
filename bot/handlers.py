@@ -615,6 +615,7 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         )
         return
 
+    # Собираем все бронирования
     flattened = [
         (target_date, entry)
         for target_date, room_events in zip(dates, per_day_events, strict=True)
@@ -630,37 +631,54 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
         )
         return
 
-    # --- Формируем матрицу ---
     from collections import defaultdict
+    import itertools
 
     # уникальные комнаты
     rooms = sorted({entry.room_name for _, entry in flattened})
-    # структура: calendar[date][room_name] = список событий
-    calendar = defaultdict(lambda: defaultdict(list))
-    for target_date, entry in flattened:
-        calendar[target_date][entry.room_name].append(entry)
 
-    # генерируем строки матрицы
-    lines = ["Ближайшие бронирования на 7 дней:\n"]
-    header = "Дата        | " + " | ".join(f"{room}" for room in rooms)
-    lines.append(header)
-    lines.append("-" * len(header))
+    # собираем матрицу time × room для каждой даты
+    for target_date in sorted({d for d, _ in flattened}):
+        # собираем события для даты
+        day_entries = [entry for d, entry in flattened if d == target_date]
 
-    for target_date in sorted(calendar.keys()):
-        row = [target_date.strftime("%d.%m.%Y")]
-        for room in rooms:
-            entries = calendar[target_date].get(room, [])
-            if entries:
-                cell = ", ".join(_display_event_title(e) for e in entries)
-            else:
-                cell = "свободно"
-            row.append(cell)
-        lines.append(" | ".join(row))
+        # собираем уникальные слоты времени
+        time_slots = sorted({e.start.strftime("%H:%M") for e in day_entries})
+        if not time_slots:
+            continue
 
-    await bot.answer_message(
-        "\n".join(lines),
-        bubbles=get_back_to_menu_bubbles(),
-    )
+        # строим словарь: slot × room → список пользователей
+        matrix = defaultdict(lambda: defaultdict(str))
+        for entry in day_entries:
+            start_str = entry.start.strftime("%H:%M")
+            matrix[start_str][entry.room_name] = _display_event_title(entry)
+
+        # строим bubbles для BotX
+        bubbles = []
+
+        # заголовок с комнатами
+        header_text = " | ".join(rooms)
+        bubbles.append({"text": f"{target_date.strftime('%d.%m.%Y')}\n{header_text}"})
+
+        for slot in time_slots:
+            row_buttons = []
+            row_text_parts = [slot]
+            for room in rooms:
+                cell_text = matrix[slot].get(room, "")
+                if not cell_text:
+                    cell_text = " "  # пустая ячейка
+                row_text_parts.append(cell_text)
+                # кнопка просто для отображения
+                row_buttons.append({"text": cell_text, "command": None})
+            bubbles.append({
+                "text": " | ".join(row_text_parts),
+                "buttons": row_buttons,
+            })
+
+        await bot.answer_message(
+            f"Бронирования на {target_date.strftime('%d.%m.%Y')}:",
+            bubbles=bubbles
+        )
 
 @collector.command("/my_bookings", description="Мои бронирования")
 async def my_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
