@@ -597,6 +597,8 @@ async def confirm_booking_handler(message: IncomingMessage, bot: Bot) -> None:
     )
 
 
+from calendar import monthcalendar
+from datetime import date, timedelta
 from pybotx import BubbleMarkup
 
 @collector.command("/view_bookings", description="Посмотреть бронирования")
@@ -604,139 +606,98 @@ async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
     today = _now_local().date()
     
-    # Сохраняем текущую дату в состоянии для навигации
-    draft = get_draft(message.sender.huid)
-    draft.view_date = today
-    set_state(message.sender.huid, "viewing_calendar")
-    
-    await show_calendar_grid(message, bot, today)
+    # Показываем календарь на текущий месяц
+    await show_month_calendar(message, bot, today.year, today.month)
 
 
-async def show_calendar_grid(message: IncomingMessage, bot: Bot, target_date: date) -> None:
-    """Показывает календарь в виде сетки: комнаты сверху, время слева"""
+async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, month: int) -> None:
+    """Показывает календарь месяца в виде сетки кнопок"""
     
-    rooms = get_rooms()
-    room_names = [room["name"] for room in rooms]
+    # Получаем календарь на месяц
+    month_calendar = monthcalendar(year, month)
     
-    try:
-        # Получаем события на выбранную дату
-        room_events = await _gather_room_events_for_date(target_date)
-    except CommuniGateError:
-        logger.exception("Failed to load room bookings from CommuniGate")
-        await bot.answer_message(
-            "Не удалось загрузить бронирования из календарей переговорок.",
-            bubbles=get_back_to_menu_bubbles(),
-        )
-        return
+    # Названия дней недели
+    weekdays = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
     
-    # Собираем все временные слоты из бронирований
-    time_slots = set()
-    for _, entries in room_events:
-        for entry in entries:
-            start_time = entry.start.time()
-            end_time = entry.end.time()
-            
-            # Добавляем время начала
-            time_slots.add(start_time)
-            
-            # Добавляем все 30-минутные интервалы внутри бронирования
-            current = start_time
-            while current < end_time:
-                time_slots.add(current)
-                current_dt = datetime.combine(target_date, current) + timedelta(minutes=30)
-                current = current_dt.time()
-            
-            # Добавляем время окончания
-            time_slots.add(end_time)
+    # Название месяца
+    month_names = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+    }
     
-    # Если нет бронирований, показываем стандартные часы работы (9:00-18:00)
-    if not time_slots:
-        for hour in range(9, 19):
-            for minute in [0, 30]:
-                time_slots.add(time(hour, minute))
+    lines = [f"📅 {month_names[month]} {year}\n"]
     
-    # Сортируем временные слоты
-    sorted_times = sorted(time_slots)
-    
-    # Создаем карту бронирований: {комната: {время: заголовок}}
-    bookings_map = {}
-    for room, entries in room_events:
-        room_name = room["name"]
-        bookings_map[room_name] = {}
-        for entry in entries:
-            start_time = entry.start.time()
-            end_time = entry.end.time()
-            title = _display_event_title(entry)
-            
-            # Заполняем все временные слоты в рамках бронирования
-            for slot in sorted_times:
-                if start_time <= slot < end_time:
-                    bookings_map[room_name][slot] = title
-    
-    # Определяем ширину колонок
-    time_col_width = 12  # Ширина колонки со временем
-    room_col_width = max(20, max(len(name) for name in room_names) + 2)
-    
-    lines = []
-    
-    # Заголовок с датой
-    weekday_names = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
-    weekday = weekday_names[target_date.weekday()]
-    date_str = target_date.strftime("%d.%m.%Y")
-    lines.append(f"📅 Расписание на {date_str} ({weekday})\n")
-    
-    # Строка с названиями комнат
-    header = f"{'Время':<{time_col_width}}"
-    for room_name in room_names:
-        header += f" │ {room_name:<{room_col_width}}"
-    lines.append(header)
-    lines.append("─" * len(header))
-    
-    # Заполняем временные слоты
-    for slot in sorted_times:
-        # Форматируем время
-        slot_end = (datetime.combine(target_date, slot) + timedelta(minutes=30)).time()
-        time_label = f"{slot.strftime('%H:%M')}-{slot_end.strftime('%H:%M')}"
-        
-        row = f"{time_label:<{time_col_width}}"
-        
-        for room_name in room_names:
-            booking = bookings_map.get(room_name, {}).get(slot)
-            if booking:
-                # Обрезаем длинные названия
-                display_text = booking[:room_col_width - 3] + "..." if len(booking) > room_col_width else booking
-                row += f" │ {display_text:<{room_col_width}}"
-            else:
-                row += f" │ {' ':<{room_col_width}}"
-        
-        lines.append(row)
-    
-    # Добавляем кнопки навигации с использованием BubbleMarkup
-    prev_date = target_date - timedelta(days=1)
-    next_date = target_date + timedelta(days=1)
-    today = _now_local().date()
-    
-    # Создаем BubbleMarkup для кнопок
+    # Создаем кнопки
     bubbles = BubbleMarkup()
     
-    # Кнопка "Предыдущий день"
+    # Первая строка - дни недели (не кликабельные, просто заголовки)
+    # В pybotx нет обычного текста, поэтому делаем их как неактивные кнопки
+    week_row = []
+    for weekday in weekdays:
+        week_row.append({"label": weekday, "command": ""})  # пустая команда = неактивная кнопка
+    
+    # Добавляем строку с днями недели
+    for weekday in weekdays:
+        bubbles.add_button(
+            command="",
+            label=weekday,
+            new_row=False if weekday != "ВС" else True
+        )
+    
+    # Добавляем все дни месяца
+    for week in month_calendar:
+        for day in week:
+            if day == 0:
+                # Пустая ячейка
+                bubbles.add_button(
+                    command="",
+                    label=" ",
+                    new_row=False
+                )
+            else:
+                # Кнопка с числом
+                target_date = date(year, month, day)
+                bubbles.add_button(
+                    command=f"/show_day_schedule {target_date.isoformat()}",
+                    label=str(day),
+                    new_row=False
+                )
+        # После каждой недели начинаем новую строку
+        bubbles.add_button(command="", label="", new_row=True, invisible=True)
+    
+    # Кнопки навигации по месяцам
+    # Предыдущий месяц
+    prev_month = month - 1
+    prev_year = year
+    if prev_month == 0:
+        prev_month = 12
+        prev_year = year - 1
+    
+    # Следующий месяц
+    next_month = month + 1
+    next_year = year
+    if next_month == 13:
+        next_month = 1
+        next_year = year + 1
+    
     bubbles.add_button(
-        command=f"/view_date {prev_date.isoformat()}",
-        label="◀️ Пред. день"
+        command=f"/view_month {prev_year} {prev_month}",
+        label="◀️ Пред. месяц"
     )
     
     # Кнопка "Сегодня"
-    if target_date != today:
+    today = _now_local().date()
+    if not (year == today.year and month == today.month):
         bubbles.add_button(
-            command=f"/view_date {today.isoformat()}",
+            command=f"/view_month {today.year} {today.month}",
             label="Сегодня",
             new_row=False
         )
     
-    # Кнопка "Следующий день"
     bubbles.add_button(
-        command=f"/view_date {next_date.isoformat()}",
-        label="След. день ▶️",
+        command=f"/view_month {next_year} {next_month}",
+        label="След. месяц ▶️",
         new_row=False
     )
     
@@ -746,16 +707,39 @@ async def show_calendar_grid(message: IncomingMessage, bot: Bot, target_date: da
         label="🏠 Главное меню"
     )
     
-    # Отправляем сообщение
     await bot.answer_message(
-        "\n".join(lines),
+        f"📅 {month_names[month]} {year}\n\nВыберите дату:",
         bubbles=bubbles
     )
 
 
-@collector.command("/view_date", visible=False)
-async def view_date_handler(message: IncomingMessage, bot: Bot) -> None:
-    """Обработчик навигации по датам"""
+@collector.command("/view_month", visible=False)
+async def view_month_handler(message: IncomingMessage, bot: Bot) -> None:
+    """Переключение между месяцами"""
+    args = (message.body or "").split()
+    if len(args) < 3:
+        await bot.answer_message(
+            "Ошибка навигации.",
+            bubbles=get_back_to_menu_bubbles(),
+        )
+        return
+    
+    try:
+        year = int(args[1])
+        month = int(args[2])
+    except ValueError:
+        await bot.answer_message(
+            "Ошибка формата даты.",
+            bubbles=get_back_to_menu_bubbles(),
+        )
+        return
+    
+    await show_month_calendar(message, bot, year, month)
+
+
+@collector.command("/show_day_schedule", visible=False)
+async def show_day_schedule_handler(message: IncomingMessage, bot: Bot) -> None:
+    """Показывает расписание на выбранный день"""
     args = (message.body or "").split()
     if len(args) < 2:
         await bot.answer_message(
@@ -773,9 +757,65 @@ async def view_date_handler(message: IncomingMessage, bot: Bot) -> None:
         )
         return
     
-    await show_calendar_grid(message, bot, target_date)
+    await show_day_schedule(message, bot, target_date)
 
+
+async def show_day_schedule(message: IncomingMessage, bot: Bot, target_date: date) -> None:
+    """Показывает расписание на конкретный день"""
     
+    rooms = get_rooms()
+    room_names = [room["name"] for room in rooms]
+    
+    try:
+        room_events = await _gather_room_events_for_date(target_date)
+    except CommuniGateError:
+        logger.exception("Failed to load room bookings from CommuniGate")
+        await bot.answer_message(
+            "Не удалось загрузить бронирования из календарей переговорок.",
+            bubbles=get_back_to_menu_bubbles(),
+        )
+        return
+    
+    weekday_names = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+    weekday = weekday_names[target_date.weekday()]
+    date_str = target_date.strftime("%d.%m.%Y")
+    
+    lines = [f"📅 Расписание на {date_str} ({weekday})\n"]
+    
+    for room_name in room_names:
+        lines.append(f"\n🏢 {room_name}:")
+        
+        room_events_for_day = None
+        for room, entries in room_events:
+            if room["name"] == room_name:
+                room_events_for_day = entries
+                break
+        
+        if not room_events_for_day:
+            lines.append("   ✅ свободно")
+        else:
+            for entry in room_events_for_day:
+                event_time = _format_entry_time(entry, target_date)
+                event_title = _display_event_title(entry)
+                lines.append(f"   🕐 {event_time} - {event_title}")
+    
+    bubbles = BubbleMarkup()
+    
+    bubbles.add_button(
+        command=f"/view_month {target_date.year} {target_date.month}",
+        label="📆 Вернуться к календарю"
+    )
+    
+    bubbles.add_button(
+        command="/main_menu",
+        label="🏠 Главное меню"
+    )
+    
+    await bot.answer_message(
+        "\n".join(lines),
+        bubbles=bubbles
+    )
+
 @collector.command("/my_bookings", description="Мои бронирования")
 async def my_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
