@@ -787,10 +787,17 @@ async def show_day_schedule(message: IncomingMessage, bot: Bot, target_date: dat
         if not room_events_for_day:
             lines.append("   ✅ свободно")
         else:
-            for entry in room_events_for_day:
+            # Сортируем события по времени начала
+            sorted_entries = sorted(room_events_for_day, key=lambda e: e.start)
+            
+            for entry in sorted_entries:
                 event_time = _format_entry_time(entry, target_date)
                 event_title = _display_event_title(entry)
                 lines.append(f"   🕐 {event_time} - {event_title}")
+            
+            # Показываем количество бронирований
+            if len(sorted_entries) > 1:
+                lines.append(f"   📊 Всего: {len(sorted_entries)} бронирований")
     
     # Кнопки навигации
     bubbles = BubbleMarkup()
