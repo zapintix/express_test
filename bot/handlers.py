@@ -617,7 +617,7 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
     month_calendar = monthcalendar(year, month)
     
     # Названия дней недели
-    weekdays = ["ПНД", "ВТР", "СРД", "ЧТВ", "ПТН", "СБТ", "ВСК"]
+    weekdays = ["цццццПНД", "ВТР", "СРД", "ЧТВ", "ПТН", "СБТ", "ВСК"]
     
     # Название месяца
     month_names = {
