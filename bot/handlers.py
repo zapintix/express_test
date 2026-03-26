@@ -6,6 +6,8 @@ from datetime import date, datetime, time, timedelta
 
 from pybotx import Bot, HandlerCollector, IncomingMessage
 
+from calendar import monthcalendar
+
 from bot.communigate import (
     COMMUNIGATE_TZ,
     CalendarEntry,
@@ -597,10 +599,6 @@ async def confirm_booking_handler(message: IncomingMessage, bot: Bot) -> None:
     )
 
 
-from calendar import monthcalendar
-from datetime import date, timedelta
-from pybotx import BubbleMarkup
-
 @collector.command("/view_bookings", description="Посмотреть бронирования")
 async def view_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
@@ -617,7 +615,7 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
     month_calendar = monthcalendar(year, month)
     
     # Названия дней недели
-    weekdays = ["цццццПНД", "ВТР", "СРД", "ЧТВ", "ПТН", "СБТ", "ВСК"]
+    weekdays = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
     
     # Название месяца
     month_names = {
@@ -639,13 +637,13 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
     
     # Добавляем все дни месяца
     for week in month_calendar:
-        for day in week:
+        for i, day in enumerate(week):
             if day == 0:
                 # Пустая ячейка - кнопка с пробелом
                 bubbles.add_button(
                     command="",
                     label=" ",
-                    new_row=False
+                    new_row=(i == 0)  # новая строка только для первого элемента недели
                 )
             else:
                 # Кнопка с числом
@@ -653,15 +651,8 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
                 bubbles.add_button(
                     command=f"/show_day_schedule {target_date.isoformat()}",
                     label=str(day),
-                    new_row=False
+                    new_row=(i == 0)  # новая строка только для первого элемента недели
                 )
-        # После каждой недели принудительно начинаем новую строку
-        # Добавляем невидимую кнопку-разделитель для переноса строки
-        bubbles.add_button(
-            command="",
-            label="",
-            new_row=True
-        )
     
     # Кнопки навигации по месяцам
     # Предыдущий месяц
@@ -678,7 +669,7 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
         next_month = 1
         next_year = year + 1
     
-    # Добавляем разделитель перед навигацией
+    # Разделитель
     bubbles.add_button(
         command="",
         label="─" * 20,
