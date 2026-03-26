@@ -4,7 +4,7 @@ import re
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, time, timedelta
 
-from pybotx import Bot, HandlerCollector, IncomingMessage
+from pybotx import Bot, HandlerCollector, IncomingMessage, BubbleMarkup
 
 from calendar import monthcalendar
 
