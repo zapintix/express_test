@@ -669,13 +669,6 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
         next_month = 1
         next_year = year + 1
     
-    # Разделитель
-    bubbles.add_button(
-        command="",
-        label="─" * 20,
-        new_row=True
-    )
-    
     bubbles.add_button(
         command=f"/view_month {prev_year} {prev_month}",
         label="◀️ Пред. месяц"
