@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  booking-bot:
+    build: .
+    container_name: express_bot_booking
+    restart: always
+    ports:
+      - "${PORT_OUT:-8109}:3000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - booking_data:/app/data
+
+volumes:
+  booking_data:
