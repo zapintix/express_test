@@ -617,7 +617,7 @@ async def show_month_calendar(message: IncomingMessage, bot: Bot, year: int, mon
     month_calendar = monthcalendar(year, month)
     
     # Названия дней недели
-    weekdays = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"]
+    weekdays = ["ПНД", "ВТР", "СРД", "ЧТВ", "ПТН", "СБТ", "ВСК"]
     
     # Название месяца
     month_names = {
@@ -829,7 +829,7 @@ async def show_day_schedule(message: IncomingMessage, bot: Bot, target_date: dat
         bubbles=bubbles
     )
 
-    
+
 @collector.command("/my_bookings", description="Мои бронирования")
 async def my_bookings_handler(message: IncomingMessage, bot: Bot) -> None:
     clear_state(message.sender.huid)
